@@ -18,12 +18,8 @@
 package authz
 
 import (
-	"bytes"
 	"fmt"
 	"io"
-	"net"
-	"sort"
-	"strconv"
 	"strings"
 
 	envoy_admin "github.com/envoyproxy/go-control-plane/envoy/admin/v3"
@@ -85,23 +81,11 @@ func (a *Analyzer) getParsedListeners() []*ParsedListener {
 		}
 	}
 
-	sort.Slice(ret, func(i, j int) bool {
-		ipi := net.ParseIP(ret[i].ip)
-		ipj := net.ParseIP(ret[j].ip)
-		if ipi.Equal(ipj) {
-			pi, _ := strconv.Atoi(ret[i].port)
-			pj, _ := strconv.Atoi(ret[j].port)
-			return pi < pj
-		}
-		return bytes.Compare(ipi, ipj) < 0
-	})
 	return ret
 }
 
 // Print checks the AuthZ setting for the given envoy config stored in the analyzer.
-func (a *Analyzer) Print(writer io.Writer, printAll bool) {
+func (a *Analyzer) Print(writer io.Writer) {
 	parsedListeners := a.getParsedListeners()
-	_, _ = fmt.Fprintf(writer, "Checked %d/%d listeners with node IP %s.\n",
-		len(parsedListeners), len(a.listenerDump.DynamicListeners), a.nodeIP)
-	PrintParsedListeners(writer, parsedListeners, printAll)
+	PrintParsedListeners(writer, parsedListeners)
 }

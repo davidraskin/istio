@@ -29,7 +29,6 @@ import (
 )
 
 var (
-	printAll       bool
 	configDumpFile string
 )
 
@@ -80,7 +79,7 @@ THIS COMMAND IS STILL UNDER ACTIVE DEVELOPMENT AND NOT READY FOR PRODUCTION USE.
 			if err != nil {
 				return err
 			}
-			analyzer.Print(cmd.OutOrStdout(), printAll)
+			analyzer.Print(cmd.OutOrStdout())
 			return nil
 		},
 	}
@@ -154,8 +153,8 @@ func AuthZ() *cobra.Command {
 }
 
 func init() {
-	checkCmd.PersistentFlags().BoolVarP(&printAll, "all", "a", false,
-		"Show additional information (e.g. SNI and ALPN)")
+	// checkCmd.PersistentFlags().BoolVarP(&printAll, "all", "a", false,
+	// 	"Show additional information (e.g. SNI and ALPN)")
 	checkCmd.PersistentFlags().StringVarP(&configDumpFile, "file", "f", "",
 		"The json file with Envoy config dump to be checked")
 }

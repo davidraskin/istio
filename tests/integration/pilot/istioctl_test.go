@@ -17,19 +17,23 @@ package pilot
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/onsi/gomega"
 
+	"istio.io/istio/pkg/config/protocol"
 	"istio.io/istio/pkg/test/framework"
 	"istio.io/istio/pkg/test/framework/components/echo"
 	"istio.io/istio/pkg/test/framework/components/echo/echoboot"
 	"istio.io/istio/pkg/test/framework/components/istioctl"
 	"istio.io/istio/pkg/test/framework/components/namespace"
+	"istio.io/istio/pkg/test/framework/components/stackdriver"
 	"istio.io/istio/pkg/test/framework/resource/environment"
 	"istio.io/istio/pkg/test/util/file"
+	"istio.io/istio/pkg/test/util/tmpl"
 )
 
 const (
@@ -359,6 +363,30 @@ func TestProxyStatus(t *testing.T) {
 		})
 }
 
+func getExpectedAuthZOut(allowPolicies []string, denyPolicies []string) string {
+	numPolicies := len(allowPolicies) + len(denyPolicies)
+	exp := fmt.Sprintf("Found %d Authorization Policies", numPolicies)
+	if numPolicies != 0 {
+		exp += fmt.Sprintf(" (%d allow and %d deny)", len(allowPolicies), len(denyPolicies))
+	}
+	exp += "\n"
+
+	if len(allowPolicies) != 0 {
+		exp += fmt.Sprintln("  ALLOW policies")
+		for _, policy := range allowPolicies {
+			exp += fmt.Sprintf("   - %s\n", policy)
+		}
+	}
+	if len(denyPolicies) != 0 {
+		exp += fmt.Sprintln("  DENY policies")
+		for _, policy := range denyPolicies {
+			exp += fmt.Sprintf("   - %s\n", policy)
+		}
+	}
+
+	return exp
+}
+
 func TestAuthZCheck(t *testing.T) {
 	framework.NewTest(t).
 		RequiresEnvironment(environment.Kube).
@@ -368,17 +396,53 @@ func TestAuthZCheck(t *testing.T) {
 				Inject: true,
 			})
 
-			authPol := file.AsStringOrFail(t, "../istioctl/testdata/authz-a.yaml")
+			authPol := file.AsStringOrFail(t, "../istioctl/testdata/authz-2-deny.yaml")
 			ctx.ApplyConfigOrFail(t, ns.Name(), authPol)
-
-			var a echo.Instance
-			echoboot.NewBuilderOrFail(ctx, ctx).
-				With(&a, echoConfig(ns, "a")).
-				BuildOrFail(ctx)
 
 			istioCtl := istioctl.NewOrFail(ctx, ctx, istioctl.Config{})
 
-			podID, err := getPodID(a)
+			sdInst := stackdriver.NewOrFail(ctx, ctx, stackdriver.Config{})
+
+			templateBytes, err := ioutil.ReadFile("../istioctl/testdata/custom_bootstrap.yaml.tmpl")
+			if err != nil {
+				ctx.Fatalf("Failure reading file custom bootstrap file")
+			}
+			sdBootstrap, err := tmpl.Evaluate(string(templateBytes), map[string]interface{}{
+				"StackdriverNamespace": sdInst.GetStackdriverNamespace(),
+				"EchoNamespace":        ns.Name(),
+			})
+
+			err = ctx.ApplyConfig(ns.Name(), sdBootstrap)
+			if err != nil {
+				return
+			}
+
+			var d echo.Instance
+			echoboot.NewBuilderOrFail(ctx, ctx).
+				With(&d, echo.Config{
+					Service:   "d",
+					Namespace: ns,
+					Subsets: []echo.SubsetConfig{
+						{
+							Annotations: map[echo.Annotation]*echo.AnnotationValue{
+								echo.SidecarBootstrapOverride: {
+									Value: "stackdriver-bootstrap-config",
+								},
+							},
+						},
+					},
+					Ports: []echo.Port{
+						{
+							Name:     "http",
+							Protocol: protocol.HTTP,
+							// We use a port > 1024 to not require root
+							InstancePort: 8090,
+						},
+					},
+					Pilot: p,
+				}).
+				BuildOrFail(ctx)
+			podID, err := getPodID(d)
 			if err != nil {
 				ctx.Fatalf("Could not get Pod ID: %v", err)
 			}
@@ -389,9 +453,10 @@ func TestAuthZCheck(t *testing.T) {
 
 			args = []string{"experimental", "authz", "check",
 				fmt.Sprintf("%s.%s", podID, ns.Name())}
+
+			expected := getExpectedAuthZOut([]string{"allow-policy"}, []string{"deny-policy"})
 			output, _ = istioCtl.InvokeOrFail(t, args)
-			// Verify the output includes a policy "integ-test", which is the policy
-			// loaded above from authz-a.yaml
-			g.Expect(output).To(gomega.MatchRegexp("noneSDS: default.*\\[integ-test\\]"))
+			t.Logf("\n%s", output)
+			g.Expect(output).To(gomega.Equal(expected))
 		})
 }

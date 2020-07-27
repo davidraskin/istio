@@ -36,7 +36,17 @@ func TestMain(m *testing.M) {
 	framework.
 		NewSuite("pilot_test", m).
 		RequireSingleCluster().
-		SetupOnEnv(environment.Kube, istio.Setup(&i, nil)).
+		SetupOnEnv(environment.Kube, istio.Setup(&i, func(cfg *istio.Config) {
+			if cfg == nil {
+				return
+			}
+			// disable mixer telemetry and enable stackdriver filter
+			cfg.Values["telemetry.enabled"] = "true"
+			cfg.Values["telemetry.v1.enabled"] = "false"
+			cfg.Values["telemetry.v2.enabled"] = "true"
+			cfg.Values["telemetry.v2.stackdriver.enabled"] = "true"
+			cfg.Values["telemetry.v2.stackdriver.logging"] = "true"
+		})).
 		Setup(func(ctx resource.Context) (err error) {
 			if p, err = pilot.New(ctx, pilot.Config{}); err != nil {
 				return err
