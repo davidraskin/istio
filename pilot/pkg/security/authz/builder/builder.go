@@ -40,6 +40,7 @@ type Builder struct {
 	trustDomainBundle  trustdomain.Bundle
 	denyPolicies       []model.AuthorizationPolicy
 	allowPolicies      []model.AuthorizationPolicy
+	auditPolicies      []model.AuthorizationPolicy
 	isIstioVersionGE15 bool
 }
 
@@ -47,29 +48,34 @@ type Builder struct {
 // Returns nil if none of the authorization policies are enabled for the workload.
 func New(trustDomainBundle trustdomain.Bundle, workload labels.Collection, namespace string,
 	policies *model.AuthorizationPolicies, isIstioVersionGE15 bool) *Builder {
-	denyPolicies, allowPolicies := policies.ListAuthorizationPolicies(namespace, workload)
-	if len(denyPolicies) == 0 && len(allowPolicies) == 0 {
+	denyPolicies, allowPolicies, auditPolicies := policies.ListAuthorizationPolicies(namespace, workload)
+	if len(denyPolicies) == 0 && len(allowPolicies) == 0 && len(auditPolicies) == 0 {
 		return nil
 	}
 	return &Builder{
 		trustDomainBundle:  trustDomainBundle,
 		denyPolicies:       denyPolicies,
 		allowPolicies:      allowPolicies,
+		auditPolicies:      auditPolicies,
 		isIstioVersionGE15: isIstioVersionGE15,
 	}
 }
 
-// BuilderHTTP returns the RBAC HTTP filters built from the authorization policy.
+// BuildHTTP returns the RBAC HTTP filters built from the authorization policy.
 func (b Builder) BuildHTTP() []*httppb.HttpFilter {
 	var filters []*httppb.HttpFilter
 
 	if denyConfig := build(b.denyPolicies, b.trustDomainBundle,
-		false /* forTCP */, true /* forDeny */, b.isIstioVersionGE15); denyConfig != nil {
+		rbacpb.RBAC_DENY, false /* forTCP */, b.isIstioVersionGE15); denyConfig != nil {
 		filters = append(filters, createHTTPFilter(denyConfig))
 	}
 	if allowConfig := build(b.allowPolicies, b.trustDomainBundle,
-		false /* forTCP */, false /* forDeny */, b.isIstioVersionGE15); allowConfig != nil {
+		rbacpb.RBAC_ALLOW, false /* forTCP */, b.isIstioVersionGE15); allowConfig != nil {
 		filters = append(filters, createHTTPFilter(allowConfig))
+	}
+	if auditConfig := build(b.auditPolicies, b.trustDomainBundle,
+		rbacpb.RBAC_LOG, false /* forTCP */, b.isIstioVersionGE15); auditConfig != nil {
+		filters = append(filters, createHTTPFilter(auditConfig))
 	}
 
 	return filters
@@ -80,28 +86,34 @@ func (b Builder) BuildTCP() []*tcppb.Filter {
 	var filters []*tcppb.Filter
 
 	if denyConfig := build(b.denyPolicies, b.trustDomainBundle,
-		true /* forTCP */, true /* forDeny */, b.isIstioVersionGE15); denyConfig != nil {
+		rbacpb.RBAC_DENY, true /* forTCP */, b.isIstioVersionGE15); denyConfig != nil {
 		filters = append(filters, createTCPFilter(denyConfig))
 	}
 	if allowConfig := build(b.allowPolicies, b.trustDomainBundle,
-		true /* forTCP */, false /* forDeny */, b.isIstioVersionGE15); allowConfig != nil {
+		rbacpb.RBAC_ALLOW, true /* forTCP */, b.isIstioVersionGE15); allowConfig != nil {
 		filters = append(filters, createTCPFilter(allowConfig))
+	}
+	if auditConfig := build(b.auditPolicies, b.trustDomainBundle,
+		rbacpb.RBAC_LOG, true /* forTCP */, b.isIstioVersionGE15); auditConfig != nil {
+		filters = append(filters, createTCPFilter(auditConfig))
 	}
 
 	return filters
 }
 
-func build(policies []model.AuthorizationPolicy, tdBundle trustdomain.Bundle, forTCP, forDeny, isIstioVersionGE15 bool) *rbachttppb.RBAC {
+func build(policies []model.AuthorizationPolicy, tdBundle trustdomain.Bundle, action rbacpb.RBAC_Action, forTCP, isIstioVersionGE15 bool) *rbachttppb.RBAC {
 	if len(policies) == 0 {
 		return nil
 	}
 
 	rules := &rbacpb.RBAC{
-		Action:   rbacpb.RBAC_ALLOW,
+		Action:   action,
 		Policies: map[string]*rbacpb.Policy{},
 	}
-	if forDeny {
-		rules.Action = rbacpb.RBAC_DENY
+
+	forAllow := false
+	if action == rbacpb.RBAC_ALLOW {
+		forAllow = true
 	}
 	for _, policy := range policies {
 		for i, rule := range policy.Spec.Rules {
@@ -116,7 +128,7 @@ func build(policies []model.AuthorizationPolicy, tdBundle trustdomain.Bundle, fo
 				continue
 			}
 			m.MigrateTrustDomain(tdBundle)
-			generated, err := m.Generate(forTCP, forDeny)
+			generated, err := m.Generate(forTCP, forAllow)
 			if err != nil {
 				authzLog.Errorf("skipped rule %s: %v", name, err)
 				continue

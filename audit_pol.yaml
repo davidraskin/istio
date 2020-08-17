@@ -1,0 +1,12 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  namespace: default
+  name: audit-pol
+spec:
+  action: AUDIT
+  rules:
+  - to:
+    - operation:
+        methods: ["GET"]
+        paths: [“/user/profile/*”]
