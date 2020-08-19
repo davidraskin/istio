@@ -6,7 +6,4 @@ metadata:
 spec:
   action: AUDIT
   rules:
-  - to:
-    - operation:
-        methods: ["GET"]
-        paths: [“/user/profile/*”]
+    - {}

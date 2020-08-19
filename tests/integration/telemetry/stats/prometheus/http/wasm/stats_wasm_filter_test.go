@@ -49,4 +49,10 @@ func setupConfig(cfg *istio.Config) {
 	// enable telemetry v2 with Wasm
 	cfg.Values["telemetry.v2.metadataExchange.wasmEnabled"] = "true"
 	cfg.Values["telemetry.v2.prometheus.wasmEnabled"] = "true"
+	cfg.Values["telemetry.v2.stackdriver.enabled"] = "true"
+	cfg.Values["telemetry.v2.stackdriver.logging"] = "true"
+	cfg.Values["telemetry.v2.stackdriver.topology"] = "true"
+	cfg.Values["global.proxy.tracer"] = "stackdriver"
+	cfg.Values["pilot.traceSampling"] = "100"
+	cfg.Values["telemetry.v2.stackdriver.configOverride"] = `{"enable_mesh_edges_reporting": true,"meshEdgesReportingDuration":"5s","enable_audit_log": true}`
 }
