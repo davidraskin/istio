@@ -1,0 +1,63 @@
+# c accepts requests from b but denies requests from a
+apiVersion: "security.istio.io/v1beta1"
+kind: AuthorizationPolicy
+metadata:
+  name: policy-c-deny
+  namespace: "{{ .Namespace }}"
+spec:
+  selector:
+    matchLabels:
+      "app": "c"
+  action: DENY
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/{{ .Namespace }}/sa/a"]
+---
+
+# c audits all requests
+apiVersion: "security.istio.io/v1beta1"
+kind: AuthorizationPolicy
+metadata:
+  name: policy-c-audit
+  namespace: "{{ .Namespace }}"
+spec:
+  selector:
+    matchLabels:
+      "app": "c"
+  action: AUDIT
+  rules:
+  - {}
+---
+
+# d accepts only requests from a
+apiVersion: "security.istio.io/v1beta1"
+kind: AuthorizationPolicy
+metadata:
+  name: policy-d-allow
+  namespace: "{{ .Namespace }}"
+spec:
+  selector:
+    matchLabels:
+      "app": "d"
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/{{ .Namespace }}/sa/a"]
+---
+
+# d audits only requests on port 8092
+apiVersion: "security.istio.io/v1beta1"
+kind: AuthorizationPolicy
+metadata:
+  name: policy-d-audit
+  namespace: "{{ .Namespace }}"
+spec:
+  selector:
+    matchLabels:
+      "app": "d"
+  action: AUDIT
+  rules:
+  - to:
+    - operation:
+        ports: ["8092"]

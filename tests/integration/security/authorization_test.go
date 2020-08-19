@@ -1086,12 +1086,12 @@ func TestAuthorization_Audit(t *testing.T) {
 				}
 			}
 			cases := []rbacUtil.TestCase{
+				newTestCase(d, "/allow_audit", true),
+				newTestCase(d, "/other", true),
 				newTestCase(b, "/allow_audit", true),
 				newTestCase(b, "/deny_audit", false),
 				newTestCase(c, "/allow_audit", true),
 				newTestCase(c, "/deny_audit", false),
-				newTestCase(d, "/allow_audit", true),
-				newTestCase(d, "/other", true),
 			}
 
 			args := map[string]string{
