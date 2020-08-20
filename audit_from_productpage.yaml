@@ -1,7 +1,7 @@
 apiVersion: "security.istio.io/v1beta1"
 kind: "AuthorizationPolicy"
 metadata:
-  name: "details-viewer"
+  name: "audit-source-productpage"
   namespace: default
 spec:
   action: AUDIT
@@ -12,3 +12,4 @@ spec:
     to:
     - operation:
         methods: ["GET"]
+        paths: ["/reviews*"]

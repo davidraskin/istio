@@ -290,7 +290,7 @@ func (r rule) checkError(action rbacpb.RBAC_Action, err error) error {
 	}
 
 	// Ignore the error for deny or audit policy. This will make the current rule ignored and continue the generation of
-	// the next rule, effectively result in a wider deny policy (i.e. more likely to deny a request).
+	// the next rule, effectively result in a wider deny policy (i.e. more likely to deny or audit request).
 	return nil
 }
 
